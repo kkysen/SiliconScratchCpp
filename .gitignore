@@ -30,3 +30,16 @@
 *.exe
 *.out
 *.app
+
+
+# LLVM bitcode
+*.bc
+
+cmake-build-debug/
+.idea/
+
+build/
+bin
+
+misc/
+!src/misc/

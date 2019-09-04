@@ -1,0 +1,17 @@
+function(Xclang)
+    foreach (arg ${ARGN})
+        add_compile_options("SHELL:-Xclang ${arg}")
+    endforeach ()
+endfunction()
+
+function(XclangLoad)
+    foreach (arg ${ARGN})
+        add_compile_options("SHELL:-Xclang -load -Xclang ${arg}")
+    endforeach ()
+endfunction()
+
+function(XclangLoadTargets)
+    foreach (arg ${ARGN})
+        XclangLoad("${CMAKE_BINARY_DIR}/lib/$<TARGET_FILE_NAME:${arg}>")
+    endforeach ()
+endfunction()

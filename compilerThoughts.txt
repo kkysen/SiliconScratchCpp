@@ -1,0 +1,521 @@
+for math operators, they can hopefully be implemented as simple low-level opcodes
+random should be done through not mt (mersenne twister) but using splitmax, xorshift (V8), or pcg, seeded using Math.random()
+for mod, not supposed to be negative
+if floating point mod, need to use fmod
+round is a no op for ints, but may indicate that the number should be floating point
+join, letter of, length of, contains are string ops
+for variables, need to track if string, int, or float, big int, and what size
+for numbers, for int need to track signed, unsigned and max size so I can determine how many bits needed
+for floats, just always use doubles f64 (actually change to Float, which for now is f32)
+round usually indicates a float, abs usually indicates signed
+any of join, letter of, length of, or contains indicates a string
+change by indicates number, always
+random is always a number, but could be int or float
+if both int args to random, should return int 
+same for unsigned, both have to be unsigned for unsigned output
+otherwise floating point output
++, -, *, / are always numbers
+division should probably always be floating point?
+comparisons can be number or string
+string comparison is lexicographic
+
+direction is floating degrees
+position is floating
+move, turn, go to, glide to, point in, change xy by, set xy by, change effect by, set effect to are all floating point
+size is floating, out of 100%
+go forward X layers is uint
+go backward X layers is uint
+these could be int though if can go forward negative layers
+costume number, backdrop number are uints
+size is float?
+volume is percent?
+sound effects are float
+wait is float
+repeat is uint
+mouse xy is float
+loudness is float
+timer is float
+current [time] is uint
+days since 2000 is uint
+username is string
+backdrop number is uint
+length of is uint
+letter of is char
+
+when used in number operations (like +), bools are cast to 0 or 1 (this is natural)
+bool variables are only set to 0 or 1
+but should be based more on their use
+so if only used in boolean contexts, could be 0 and not 0
+
+coercing/casting
+bool to string is "true" or "false"
+
+in general, I need to track all variable and list uses to narrow down their types
+variables are bool, char, int, uint (any size), f32, f64
+uN, iN, f32, f64
+
+
+Lists
+backed by either vector, deque, unordered_set
+
+supported operations
+	vector
+		all operations
+	deque
+		all operations
+		use if add and operations at front and back are heavily used (esp. front)
+		if mostly front operations but not back, use backwards vector
+	unordered_set
+		no index operations unless index is start or end
+		add
+		delete all of
+		length
+		contains
+
+lists might have to be polymorphic, but hopefully not
+
+
+First convert .sb3 file into my own scratch IR
+Then I need to track all variable and list uses
+From their uses, I can assign types to them,
+and check where I need to cast/convert/coerce.
+This is the same for cloud data variables, although they have a 256 character/digit (I assume byte) limit.
+To better track variable/list usage, I need to run transformation/optimization passes on them.
+For example, delete [length of [list] - 1] of list should become a pop_back node or something similar.
+This enables more precise typing.
+To track variable uses, I also need to track all intermediate uses.
+It's like how LLVM has a use list for each value.
+
+
+Each script becomes a separate function.
+Each function has a trigger, the starting event,
+and then a bunch of blocks.
+For each set of blocks, a scope?, I need to categorize it:
+	computational
+	graphical
+	reactive
+computational scopes are purely computational, never pausing on anything.
+They can only contain:
+	starting event blocks
+	operators
+	variables (not show/hide)
+	lists (not show/hide)
+	other computational blocks
+	constant value blocks (e.x. username, backdrop #) (TODO: is current year, days since 2000 constant enough)
+	if-then, if-then-else, repeat-until, repeat are valid if they contain only computational blocks
+	forever could be computational, but it's usually not used unless we want the game loop
+	if there's an if within a forever, then it's computational
+	broadcasts
+	stop
+graphical scopes are a superset of computational scopes and can use graphical blocks.
+Loops inside graphical scopes are run every animation frame (requestAnimationFrame).
+They can also contain:
+	motion blocks
+	looks blocks
+	sound blocks
+	variable sensing blocks
+	show/hide blocks
+	forever with no possible exit
+	create clone
+	delete this clone
+	if-then, if-then-else, repeat-until if they contain graphical blocks (like sensor reporters)
+reactive scopes are a superset of graphical scopes and can use graphical blocks.
+They are run using JS' event loop.
+They can also contain:
+	remaining event blocks, specifically:
+	broadcast and wait
+	wait
+	wait until
+	ask and wait
+
+TODO maybe I should use f32 for graphical variables instead of f64
+nothing much is lost since Scratch isn't that precise anyways
+
+
+using Float = f32;
+using USize = u32;
+
+enum ValueKind {
+	
+	constant,
+	instruction,
+	variable,
+	list,
+	
+	constexpr bool isConstant() const;
+	constexpr bool isInstruction() const;
+	constexpr bool isRValue() const;
+	constexpr bool isLValue() const;
+	constexpr bool isVariable() const;
+	constexpr bool isList() const;
+	
+}
+
+abstract Value {
+	llvm::SmallVector<Instruction> reads;
+	const ValueKind kind;
+	Lazy<Type> type;
+}
+
+enum ComputeKind {
+	computational,
+	graphical,
+	reactive,
+}
+
+abstract InstructionType {
+	const ComputeKind kind;
+}
+
+final Instruction : Value {
+	const ComputeKind ownComputeKind;
+	const size_t numArgs const;
+	const bool hasBody const;
+	constexpr const llvm::ArrayRef<Value>& args const;
+	constexpr const Block& body() const;
+	Lazy<ComputeKind> computeKind;
+}
+
+final Block {
+	llvm::SmallVector<Instruction> instructions;
+	llvm::BasicBlock block; // TODO for compilation
+}
+
+final Script {
+	const Event trigger;
+	llvm::SmallVector<Block> blocks;
+	llvm::Function function; // TODO for compilation
+}
+
+final Sprite {} // TODO
+
+final SpriteScripts {
+	llvm::SmallVector<Script> scripts;
+	Sprite sprite;
+	Scope locals;
+}
+
+final Program {
+	llvm::SmallVector<SpriteScripts> spriteScripts;
+	Scope globals;
+	llvm::Module module; // TODO for compilation
+}
+
+Constant : Value {
+	const ValueKind kind = ValueKind::constant;
+}
+
+Event : Constant {
+	
+}
+
+Click : Event {}
+KeyPress : Event {}
+Condition : Event {}
+
+Broadcast : Event {
+	const std::string name;
+}
+
+// LValues in Scratch are only Variable and List
+abstract LValue : Value {
+	const llvm::SmallString name;
+	llvm::SmallVector<Instruction> writes;
+}
+
+final Variable : LValue {
+	const ValueKind kind = ValueKind::variable;
+}
+
+final List : LValue {
+	const ValueKind kind = ValueKind::list;
+	Lazy<Type> elementType;
+}
+
+final Scope {
+	llvm::StringMap<Variable> variables;
+	llvm::StringMap<List> lists;
+}
+
+
+// aggregate instructions
+
+abstract AggregateInstruction : Instruction {}
+
+final While/ForeverIf : AggregateInstruction {} (from Forever <If> or Repeat -> RepeatUntil)
+
+
+Scratch Blocks
+
+abstract ScratchBlock : Instruction {
+	const llvm::StringRef blockTypeName;
+	const llvm::StringRef blockName;
+	constexpr llvm::Twine opcode();
+}
+
+abstract MotionBlock : ScratchBlock {}
+abstract LooksBlock : ScratchBlock {}
+abstract EventBlock : ScratchBlock {}
+abstract ControlBlock : ScratchBlock {}
+abstract SensorBlock : ScratchBlock {}
+abstract OperatorBlock : ScratchBlock {}
+abstract VariableBlock : ScratchBlock {}
+abstract ListBlock : ScratchBlock {}
+abstract CustomBlock : ScratchBlock {}
+
+// TODO add bound args
+
+template <size_t N>
+PropertyArgs {
+	using Args = StaticArrayView<N, Value*> args;
+}
+
+template <size_t N>
+ReadOnlyProperty : PropertyArgs<N> {
+
+	FunctionCallee getter;
+	
+	llvm::Value* get(Args args) const;
+	
+}
+
+template <size_t N>
+WriteOnlyProperty : PropertyArgs<N> {
+
+	FunctionCallee setter;
+	
+	llvm::Value* set(Args args, llvm::Value* value) const;
+	
+}
+
+template <size_t N>
+Property : ReadOnlyProperty<N>, WriteOnlyProperty<N> {} // TODO diamond problem?
+
+template <size_t N>
+AddableProperty : Property<N> {
+	
+	FunctionCallee add;
+	
+	llvm::Value* changeBy(Args args, llvm::Value* value) const {
+		return set(add(get(), value));
+	}
+	
+}
+
+
+template <typename T>
+ShaderEffectsT {
+	T color;
+	T fisheye;
+	T whirl;
+	T pixelate;
+	T mosaic;
+	T brightness;
+	T ghost;
+}
+
+template <typename T>
+AudioEffectsT {
+	T pitch;
+	T pan;
+}
+
+namespace scratch::properties {
+	
+	// some of these are stage/backdrop or sprite dependent
+	
+	namespace motion {
+	
+		AddableProperty<1> position; // math::Vec2<Float>
+		AddableProperty<1> direction; // Float
+		WriteOnlyProperty<1> rotationStyle; // enum { left-right, don't rotate, all around }
+		
+	}
+	
+	namespace looks {
+		
+		template <size_t N>
+		Look {
+			ReadOnlyProperty<N> all; // StaticArrayView
+			Property<N> current; // T&
+			ReadOnlyProperty<N> next; // T&
+			ReadOnlyProperty<N> numbered; // T&
+		}
+	
+		WriteOnlyProperty<1> speech; // string
+		WriteOnlyProperty<1> thought; // string
+		Look<1> costume; // T = Costume
+		Look<0> backdrop; // T = Backdrop
+		AddableProperty<1> size; // percent scale, Float
+		ShaderEffectsT<AddableProperty<1>> effects; // Floats
+		WriteOnlyProperty<1> clearEffects; // 
+		WriteOnlyProperty<1> visibility;
+		
+	}
+	
+	namespace sounds {
+		
+		WriteOnlyProperty<0> playSound;
+		WriteOnlyProperty<0> startSound;
+		AudioEffectsT<AddableProperty<0>> effects; // Float
+		WriteOnlyProperty<0> clearEffects; // void
+		AddableProperty<0> volume; // percent scale, Float
+		
+	}
+	
+	namespace events {}
+	namespace control {}
+	
+	namespace sensor {
+		
+		ReadOnlyProperty<2> touching; // bool(math::Vec2<Float>)
+		ReadOnlyProperty<2> touchingColor; // bool(RGB)
+		ReadOnlyProperty<3> colorIsTouchingColor; // bool(RGB, RGB)
+		ReadOnlyProperty<2> distanceTo; // Float(math::Vec2<Float>)
+		ReadOnlyProperty<1> answer; // string
+		ReadOnlyProperty<0> mouseDown; // bool
+		ReadOnlyProperty<0> mousePosition; // math::Vec2<Float>
+		WriteOnlyProperty<1> draggable; // bool
+		ReadOnlyProperty<2> backdropNumber; // USize(Backdrop)
+		ReadOnlyProperty<0> username; // string, load time constant
+		ReadOnlyProperty<0> date; // Date (in WASM as u64, ms since epoch)
+		ReadOnlyProperty<0> loudness; // 
+		Property<0> timer; // f64
+		
+	}
+	
+	namespace variables {
+		
+		WriteOnlyProperty<1> visibility;
+		
+	}
+	
+}
+
+Position {
+	Value xy; // math::Vec2<Float>
+}
+
+Direction {
+	Value degrees; // Float
+}
+
+Time {
+	Value seconds; // Float
+}
+
+BoolValue {
+	Value value; // bool
+}
+
+
+Position GetPosition : MotionBlock {}
+abstract SetPosition : MotionBlock {}
+abstract AnimateSetPosition : SetPosition {}
+
+Direction GetDirection : MotionBlock {}
+abstract SetDirection : MotionBlock {}
+
+abstract SetRotationStyle : MotionBlock {}
+
+
+namespace scratch::blocks::motion::compile {
+	
+	llvm::Value* turn(Direction direction, BoolValue clockwise) {
+		return properties::motion::direction += (direction.degrees * (clockwise.value ? -1 : 1));
+	}
+	
+}
+
+namespace scratch::blocks::motion::create {
+	
+	Value randomFloat(Value min, Value max);
+	
+	Position randomPosition();
+	Direction randomDirection();
+	
+	// e.x.
+	
+	MotionBlock turn(Direction direction, BoolValue clockwise) {
+		// TODO std::move
+		return MotionBlock("turn", [direction, clockwise]() {
+			return compile::motion::turn(direction, clockwise);
+		});
+	}
+	
+	MotionBlock turnLeft(Direction direction) {
+		return MotionBlock("turnLeft", [direction]() {
+			return compile::motion::turn(direction, BoolValue(false));
+		});
+	}
+	
+	MotionBlock turnRight(Direction direction) {
+		return MotionBlock("turnLeft", [direction]() {
+			return compile::motion::turn(direction, BoolValue(true));
+		});
+	}
+	
+	//SetDirection turn(BoolValue clockwise, Direction direction);
+	//SetDirection turnLeft(Direction direction);
+	//SetDirection turnRight(Direction direction);
+	
+	SetPosition moveTo(Position position);
+	SetPosition moveToRandomPosition();
+	
+	AnimateSetPosition glideTo(Position position, Time time);
+	AnimateSetPosition glideToRandomPosition();
+	
+	SetDirection pointInDirection(Direction direction);
+	SetDirection pointInRandomDirection();
+	
+	SetPosition setXTo(Value x);
+	SetPosition setYTo(Value y);
+	SetPosition changeXBy(Value dx);
+	SetPosition changeYBy(Value dy);
+	
+	SetDirection bounceIfOnEdge();
+	
+	SetRotationStyle setRotationStyle(Value rotationStyle); // TODO this is an enum
+	
+	Value xPosition();
+	Value yPosition();
+	
+	Direction direction();
+	
+}
+
+namespace blocks::create::looks {
+	
+	
+	
+}
+
+
+abstract Turn : MotionBlock {
+	const BoolValue clockwise;
+	const Direction direction;
+}
+
+final TurnLeft : Turn {}
+final TurnRight : Turn {}
+
+MoveTo : MotionBlock {
+	const Position position;
+}
+
+final MoveToRandomPosition : MoveTo {}
+
+GlideTo : MotionBlock {
+	const Position position;
+	const Time time;
+}
+
+final GlideToRandomPosition : GlideTo {}
+
+PointInDirection : MotionBlock {
+	const Direction direction;
+}
+
+final PointTowards : PointInDirection {}
+
+

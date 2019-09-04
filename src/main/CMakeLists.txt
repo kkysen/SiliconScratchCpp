@@ -1,0 +1,46 @@
+llvmLinkLibrary()
+
+add_executable(SiliconScratch2
+        main.cpp
+        ValueKind.cpp
+        Value.cpp
+        ComputeKind.cpp
+        Instruction.cpp
+        InstructionImpl.cpp
+        Block.cpp
+        Script.cpp
+        Sprite.cpp
+        SpriteScripts.cpp
+        Program.cpp
+        Constant.cpp
+        Event.cpp
+        events/Click.cpp
+        events/KeyPress.cpp
+        events/Condition.cpp
+        events/BroadCast.cpp
+        LValue.cpp
+        Variable.cpp
+        List.cpp
+        Scope.cpp
+        instructions/ScratchBlock.cpp
+        instructions/block/operator/Operator.cpp
+        instructions/block/operator/Operator1.cpp
+        instructions/block/operator/Operator2.cpp
+        instructions/block/operator/Add.cpp
+        instructions/block/operator/Subtract.cpp
+        instructions/block/operator/Multiply.cpp
+        instructions/block/operator/Divide.cpp
+        instructions/block/operator/Negate.cpp
+        instructions/block/operator/Min.cpp
+        instructions/block/operator/Max.cpp
+        instructions/block/operator/Abs.cpp
+        type/TypeBase.cpp
+        type/TypeKind.cpp
+        type/Primitive.cpp
+        type/List.cpp
+        type/Polymorphic.cpp
+        type/Type.cpp
+        type/types.cpp
+        )
+
+
